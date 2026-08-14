@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Vivi Trains — Select Station",
+        "description": "Choose the train station to monitor. Sensors will show the next departures from that station.",
+        "data": {
+          "station_id": "Station",
+          "departures_count": "Number of departures to track"
+        }
+      }
+    },
+    "error": {
+      "station_not_found": "Station not found in schedule data.",
+      "no_schedule": "No schedule data available for this station."
+    },
+    "abort": {
+      "already_configured": "This station is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Vivi Trains Options",
+        "data": {
+          "departures_count": "Number of departures to track"
+        }
+      }
+    }
+  }
+}
