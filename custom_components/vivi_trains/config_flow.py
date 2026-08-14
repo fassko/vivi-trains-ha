@@ -20,8 +20,9 @@ from .const import (
     CONF_STATION_NAME,
     DEFAULT_DEPARTURES_COUNT,
     DOMAIN,
+    MAX_DEPARTURES_COUNT,
 )
-from .coordinator import ViviTrainsCoordinator
+from .coordinator import ViviTrainsCoordinator, _normalize_departures_count
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -69,8 +70,8 @@ class ViviTrainsConfigFlow(ConfigFlow, domain=DOMAIN):
                 data={
                     CONF_STATION_ID: station_id,
                     CONF_STATION_NAME: station_name,
-                    CONF_DEPARTURES_COUNT: user_input.get(
-                        CONF_DEPARTURES_COUNT, DEFAULT_DEPARTURES_COUNT
+                    CONF_DEPARTURES_COUNT: _normalize_departures_count(
+                        user_input.get(CONF_DEPARTURES_COUNT)
                     ),
                 },
             )
@@ -83,7 +84,7 @@ class ViviTrainsConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_STATION_ID): vol.In(station_options),
                 vol.Optional(
                     CONF_DEPARTURES_COUNT, default=DEFAULT_DEPARTURES_COUNT
-                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=20)),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=MAX_DEPARTURES_COUNT)),
             }
         )
 
@@ -111,7 +112,14 @@ class ViviTrainsOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            return self.async_create_entry(
+                title="",
+                data={
+                    CONF_DEPARTURES_COUNT: _normalize_departures_count(
+                        user_input.get(CONF_DEPARTURES_COUNT)
+                    ),
+                },
+            )
 
         current_count = self.config_entry.options.get(
             CONF_DEPARTURES_COUNT,
@@ -121,7 +129,7 @@ class ViviTrainsOptionsFlow(OptionsFlow):
         schema = vol.Schema(
             {
                 vol.Optional(CONF_DEPARTURES_COUNT, default=current_count): vol.All(
-                    vol.Coerce(int), vol.Range(min=1, max=20)
+                    vol.Coerce(int), vol.Range(min=1, max=MAX_DEPARTURES_COUNT)
                 ),
             }
         )

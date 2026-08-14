@@ -103,6 +103,7 @@ _install_homeassistant_stubs()
 from custom_components.vivi_trains.coordinator import (  # noqa: E402
     ViviTrainsCoordinator,
     _minutes_from_midnight,
+    _normalize_departures_count,
     _parse_time,
 )
 
@@ -223,6 +224,28 @@ class DepartureSelectionTest(unittest.TestCase):
         departures = coordinator._get_next_departures(now, 1)
 
         self.assertEqual(departures[0]["trip_id"], "morning")
+
+
+class DeparturesCountTest(unittest.TestCase):
+    def test_normalizes_string_count_from_options(self) -> None:
+        self.assertEqual(_normalize_departures_count("10"), 10)
+
+    def test_normalizes_invalid_count_to_default(self) -> None:
+        self.assertEqual(_normalize_departures_count("many"), 5)
+
+    def test_clamps_count_to_supported_range(self) -> None:
+        self.assertEqual(_normalize_departures_count("0"), 1)
+        self.assertEqual(_normalize_departures_count("99"), 20)
+
+    def test_coordinator_accepts_string_count_option(self) -> None:
+        entry = types.SimpleNamespace(
+            data={"station_id": "station", "departures_count": 5},
+            options={"departures_count": "12"},
+        )
+
+        coordinator = ViviTrainsCoordinator(None, entry)
+
+        self.assertEqual(coordinator.departures_count, 12)
 
 
 class ScheduleDataTest(unittest.TestCase):

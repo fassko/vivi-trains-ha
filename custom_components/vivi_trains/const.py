@@ -9,6 +9,7 @@ CONF_DEPARTURES_COUNT = "departures_count"
 
 # Defaults
 DEFAULT_DEPARTURES_COUNT = 5
+MAX_DEPARTURES_COUNT = 20
 DEFAULT_SCAN_INTERVAL = 60  # seconds
 
 # Schedule data bundled with integration

@@ -81,6 +81,7 @@ show_route_color: true                         # optional (default: true)
 Use `direction: towards_riga` to show trains whose route ends in Rīga, for example `Skulte - Rīga`.
 Use `direction: from_riga` to show trains whose route starts from Rīga, for example `Rīga - Skulte`.
 The filter applies to the departures already exposed by the sensor, so increase the integration's departures count if you want the card to reliably show several matching departures.
+When more matching departures are available than `max_departures`, the card shows Previous/Next controls.
 
 ## Local testing
 

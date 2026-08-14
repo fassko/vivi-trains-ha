@@ -19,6 +19,7 @@
 class ViviTrainsCard extends HTMLElement {
   constructor() {
     super();
+    this._pageIndex = 0;
     this.attachShadow({ mode: 'open' });
   }
 
@@ -39,6 +40,7 @@ class ViviTrainsCard extends HTMLElement {
     };
     this._config.direction = this._normalizeDirection(this._config.direction);
     this._config.show_route_color = this._normalizeBoolean(this._config.show_route_color);
+    this._pageIndex = 0;
   }
 
   getCardSize() {
@@ -70,12 +72,17 @@ class ViviTrainsCard extends HTMLElement {
     const stationName = attrs.station_name || entityId;
     const title = this._config.title || stationName;
     const allDepartures = attrs.next_departures || [];
-    const departures = this._filterDepartures(allDepartures).slice(0, this._config.max_departures);
+    const filteredDepartures = this._filterDepartures(allDepartures);
+    const pageSize = this._pageSize();
+    const pageCount = Math.max(1, Math.ceil(filteredDepartures.length / pageSize));
+    this._pageIndex = Math.max(0, Math.min(this._pageIndex, pageCount - 1));
+    const startIndex = this._pageIndex * pageSize;
+    const departures = filteredDepartures.slice(startIndex, startIndex + pageSize);
     const updatedAt = attrs.updated_at ? new Date(attrs.updated_at).toLocaleTimeString() : '';
 
     const rows = departures.length === 0
       ? `<div class="no-trains">${this._escHtml(this._emptyMessage())}</div>`
-      : departures.map((dep, i) => this._renderRow(dep, i === 0)).join('');
+      : departures.map((dep, i) => this._renderRow(dep, startIndex === 0 && i === 0)).join('');
 
     shadow.innerHTML = `
       <style>${this._styles()}</style>
@@ -92,10 +99,10 @@ class ViviTrainsCard extends HTMLElement {
           <span class="col-days">Days</span>
         </div>
         <div class="rows">${rows}</div>
-        <div class="footer">
-          <a href="https://vivi.lv" target="_blank" rel="noopener">vivi.lv</a>
-        </div>
+        ${this._renderFooter(filteredDepartures.length, pageSize)}
       </ha-card>`;
+
+    this._attachPaginationEvents();
   }
 
   _renderRow(dep, isNext) {
@@ -120,6 +127,31 @@ class ViviTrainsCard extends HTMLElement {
         <span class="col-min">${minText}</span>
         <span class="col-dest">${this._escHtml(dep.destination || '—')}</span>
         <span class="col-days">${this._escHtml(dep.service_days || '')}</span>
+      </div>`;
+  }
+
+  _renderFooter(totalDepartures, pageSize) {
+    const hasPages = totalDepartures > pageSize;
+    if (!hasPages) {
+      return `
+        <div class="footer footer-single">
+          <a href="https://vivi.lv" target="_blank" rel="noopener">vivi.lv</a>
+        </div>`;
+    }
+
+    const pageCount = Math.ceil(totalDepartures / pageSize);
+    const pageNumber = this._pageIndex + 1;
+    const previousDisabled = this._pageIndex === 0 ? 'disabled' : '';
+    const nextDisabled = this._pageIndex >= pageCount - 1 ? 'disabled' : '';
+
+    return `
+      <div class="footer footer-paged">
+        <a href="https://vivi.lv" target="_blank" rel="noopener">vivi.lv</a>
+        <div class="pager" aria-label="Departure pages">
+          <button class="pager-button" data-page-action="previous" ${previousDisabled}>Previous</button>
+          <span class="pager-count">${pageNumber}/${pageCount}</span>
+          <button class="pager-button" data-page-action="next" ${nextDisabled}>Next</button>
+        </div>
       </div>`;
   }
 
@@ -169,23 +201,30 @@ class ViviTrainsCard extends HTMLElement {
 
       .table-header {
         display: grid;
-        grid-template-columns: 140px 100px minmax(160px, 1fr) 80px;
-        column-gap: 16px;
+        grid-template-columns: 170px 80px minmax(160px, 1fr) 70px;
+        column-gap: 18px;
         padding: 8px 16px 4px;
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0;
         color: var(--vivi-muted);
         border-bottom: 1px solid var(--vivi-border);
+      }
+
+      .table-header span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .rows { padding: 4px 0 8px; }
 
       .row {
         display: grid;
-        grid-template-columns: 140px 100px minmax(160px, 1fr) 80px;
-        column-gap: 16px;
+        grid-template-columns: 170px 80px minmax(160px, 1fr) 70px;
+        column-gap: 18px;
         align-items: center;
         padding: 8px 16px;
         border-bottom: 1px solid transparent;
@@ -253,7 +292,7 @@ class ViviTrainsCard extends HTMLElement {
       @media (max-width: 520px) {
         .table-header,
         .row {
-          grid-template-columns: minmax(88px, 1fr) 64px minmax(0, 1.4fr);
+          grid-template-columns: minmax(108px, 1fr) 60px minmax(0, 1.4fr);
           column-gap: 10px;
         }
 
@@ -276,10 +315,15 @@ class ViviTrainsCard extends HTMLElement {
       }
 
       .footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
         padding: 8px 16px;
         border-top: 1px solid var(--vivi-border);
-        text-align: right;
       }
+
+      .footer-single { justify-content: flex-end; }
 
       .footer a {
         font-size: 10px;
@@ -288,6 +332,42 @@ class ViviTrainsCard extends HTMLElement {
       }
 
       .footer a:hover { color: var(--vivi-yellow); }
+
+      .pager {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .pager-button {
+        appearance: none;
+        border: 1px solid var(--vivi-border);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--primary-text-color, var(--vivi-text));
+        cursor: pointer;
+        font: inherit;
+        font-size: 12px;
+        line-height: 1;
+        padding: 6px 9px;
+      }
+
+      .pager-button:hover:not(:disabled) {
+        background: var(--vivi-hover-bg);
+      }
+
+      .pager-button:disabled {
+        color: var(--vivi-muted);
+        cursor: default;
+        opacity: 0.55;
+      }
+
+      .pager-count {
+        color: var(--vivi-muted);
+        font-size: 11px;
+        min-width: 32px;
+        text-align: center;
+      }
     `;
   }
 
@@ -311,6 +391,21 @@ class ViviTrainsCard extends HTMLElement {
     }
 
     return departures.filter((dep) => this._matchesDirection(dep, direction));
+  }
+
+  _attachPaginationEvents() {
+    this.shadowRoot.querySelectorAll('[data-page-action]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        const action = event.currentTarget.dataset.pageAction;
+        this._pageIndex += action === 'next' ? 1 : -1;
+        this._render();
+      });
+    });
+  }
+
+  _pageSize() {
+    const value = Number.parseInt(this._config.max_departures, 10);
+    return Number.isFinite(value) && value > 0 ? value : 5;
   }
 
   _matchesDirection(dep, direction) {
@@ -406,7 +501,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c VIVI-TRAINS-CARD %c v1.0.3 ',
+  '%c VIVI-TRAINS-CARD %c v1.0.4 ',
   'background:#F8DB22;color:#000;font-weight:700;padding:2px 4px;border-radius:3px 0 0 3px',
   'background:#1c1c1e;color:#F8DB22;font-weight:700;padding:2px 4px;border-radius:0 3px 3px 0',
 );

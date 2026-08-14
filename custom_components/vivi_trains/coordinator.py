@@ -19,6 +19,7 @@ from .const import (
     DEFAULT_DEPARTURES_COUNT,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    MAX_DEPARTURES_COUNT,
     SCHEDULE_DATA_FILE,
 )
 
@@ -36,6 +37,16 @@ def _minutes_from_midnight(t: str) -> int:
     return h * 60 + m
 
 
+def _normalize_departures_count(value: Any) -> int:
+    """Return a safe departures count from config entry data/options."""
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_DEPARTURES_COUNT
+
+    return min(max(count, 1), MAX_DEPARTURES_COUNT)
+
+
 class ViviTrainsCoordinator(DataUpdateCoordinator):
     """Coordinator that loads the Vivi schedule and computes next departures."""
 
@@ -49,9 +60,11 @@ class ViviTrainsCoordinator(DataUpdateCoordinator):
         )
         self.entry = entry
         self.station_id: str = entry.data[CONF_STATION_ID]
-        self.departures_count: int = entry.options.get(
-            CONF_DEPARTURES_COUNT,
-            entry.data.get(CONF_DEPARTURES_COUNT, DEFAULT_DEPARTURES_COUNT),
+        self.departures_count = _normalize_departures_count(
+            entry.options.get(
+                CONF_DEPARTURES_COUNT,
+                entry.data.get(CONF_DEPARTURES_COUNT, DEFAULT_DEPARTURES_COUNT),
+            )
         )
         self._schedule: list[dict] = []
         self._all_stops: dict[str, dict] = {}

@@ -45,6 +45,15 @@ class OptionsFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["type"], "form")
         self.assertEqual(result["step_id"], "init")
 
+    async def test_options_flow_normalizes_submitted_count(self) -> None:
+        flow = ViviTrainsConfigFlow.async_get_options_flow(_ConfigEntry())
+        flow._config_entry = _ConfigEntry()
+
+        result = await flow.async_step_init({CONF_DEPARTURES_COUNT: "10"})
+
+        self.assertEqual(result["type"], "create_entry")
+        self.assertEqual(result["data"][CONF_DEPARTURES_COUNT], 10)
+
 
 if __name__ == "__main__":
     unittest.main()
