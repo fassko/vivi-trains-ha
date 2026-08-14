@@ -74,8 +74,13 @@ type: custom:vivi-trains-card
 entity: sensor.vivi_carnikava_next_departure   # replace with your station
 title: "Carnikava → Rīga"                      # optional custom title
 max_departures: 5                              # optional (default: 5)
+direction: towards_riga                        # optional: all, towards_riga, from_riga
 show_route_color: true                         # optional (default: true)
 ```
+
+Use `direction: towards_riga` to show trains whose route ends in Rīga, for example `Skulte - Rīga`.
+Use `direction: from_riga` to show trains whose route starts from Rīga, for example `Rīga - Skulte`.
+The filter applies to the departures already exposed by the sensor, so increase the integration's departures count if you want the card to reliably show several matching departures.
 
 ## Local testing
 

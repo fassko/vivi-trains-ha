@@ -33,6 +33,30 @@ def _install_homeassistant_stubs() -> None:
     class ConfigEntry:
         pass
 
+    class ConfigFlow:
+        def __init_subclass__(cls, **kwargs) -> None:
+            super().__init_subclass__()
+
+        def async_show_form(self, **kwargs):
+            return {"type": "form", **kwargs}
+
+        def async_create_entry(self, **kwargs):
+            return {"type": "create_entry", **kwargs}
+
+        def async_abort(self, **kwargs):
+            return {"type": "abort", **kwargs}
+
+    class OptionsFlow:
+        @property
+        def config_entry(self):
+            return self._config_entry
+
+        def async_show_form(self, **kwargs):
+            return {"type": "form", **kwargs}
+
+        def async_create_entry(self, **kwargs):
+            return {"type": "create_entry", **kwargs}
+
     class HomeAssistant:
         pass
 
@@ -48,7 +72,11 @@ def _install_homeassistant_stubs() -> None:
 
     http.StaticPathConfig = StaticPathConfig
     config_entries.ConfigEntry = ConfigEntry
+    config_entries.ConfigFlow = ConfigFlow
+    config_entries.ConfigFlowResult = dict
+    config_entries.OptionsFlow = OptionsFlow
     core.HomeAssistant = HomeAssistant
+    core.callback = lambda func: func
     exceptions.ConfigEntryNotReady = ConfigEntryNotReady
     update_coordinator.DataUpdateCoordinator = DataUpdateCoordinator
     update_coordinator.UpdateFailed = UpdateFailed

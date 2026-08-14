@@ -12,6 +12,7 @@
  *   entity: sensor.vivi_carnikava_next_departure
  *   title: Carnikava → Rīga        # optional override
  *   max_departures: 5              # optional, default 5
+ *   direction: towards_riga        # optional: all, towards_riga, from_riga
  *   show_route_color: true         # optional, default true
  */
 
@@ -32,9 +33,11 @@ class ViviTrainsCard extends HTMLElement {
     }
     this._config = {
       max_departures: 5,
+      direction: 'all',
       show_route_color: true,
       ...config,
     };
+    this._config.direction = this._normalizeDirection(this._config.direction);
   }
 
   getCardSize() {
@@ -65,11 +68,12 @@ class ViviTrainsCard extends HTMLElement {
     const attrs = stateObj.attributes || {};
     const stationName = attrs.station_name || entityId;
     const title = this._config.title || stationName;
-    const departures = (attrs.next_departures || []).slice(0, this._config.max_departures);
+    const allDepartures = attrs.next_departures || [];
+    const departures = this._filterDepartures(allDepartures).slice(0, this._config.max_departures);
     const updatedAt = attrs.updated_at ? new Date(attrs.updated_at).toLocaleTimeString() : '';
 
     const rows = departures.length === 0
-      ? `<div class="no-trains">No upcoming trains found.</div>`
+      ? `<div class="no-trains">${this._escHtml(this._emptyMessage())}</div>`
       : departures.map((dep, i) => this._renderRow(dep, i === 0)).join('');
 
     shadow.innerHTML = `
@@ -165,8 +169,8 @@ class ViviTrainsCard extends HTMLElement {
 
       .table-header {
         display: grid;
-        grid-template-columns: 80px 70px 1fr 90px;
-        gap: 4px;
+        grid-template-columns: 140px 100px minmax(160px, 1fr) 80px;
+        column-gap: 16px;
         padding: 8px 16px 4px;
         font-size: 11px;
         font-weight: 600;
@@ -180,8 +184,8 @@ class ViviTrainsCard extends HTMLElement {
 
       .row {
         display: grid;
-        grid-template-columns: 80px 70px 1fr 90px;
-        gap: 4px;
+        grid-template-columns: 140px 100px minmax(160px, 1fr) 80px;
+        column-gap: 16px;
         align-items: center;
         padding: 8px 16px;
         border-bottom: 1px solid transparent;
@@ -216,6 +220,7 @@ class ViviTrainsCard extends HTMLElement {
         font-size: 13px;
         color: var(--vivi-muted);
         font-variant-numeric: tabular-nums;
+        white-space: nowrap;
       }
 
       .row-next .col-min { color: var(--vivi-yellow); font-weight: 600; }
@@ -242,6 +247,19 @@ class ViviTrainsCard extends HTMLElement {
         font-size: 11px;
         color: var(--vivi-muted);
         text-align: right;
+        white-space: nowrap;
+      }
+
+      @media (max-width: 520px) {
+        .table-header,
+        .row {
+          grid-template-columns: minmax(88px, 1fr) 64px minmax(0, 1.4fr);
+          column-gap: 10px;
+        }
+
+        .col-days {
+          display: none;
+        }
       }
 
       .no-trains {
@@ -285,6 +303,77 @@ class ViviTrainsCard extends HTMLElement {
     const value = String(color || '').trim();
     return /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#F8DB22';
   }
+
+  _filterDepartures(departures) {
+    const direction = this._config.direction;
+    if (direction === 'all') {
+      return departures;
+    }
+
+    return departures.filter((dep) => this._matchesDirection(dep, direction));
+  }
+
+  _matchesDirection(dep, direction) {
+    const parts = this._routeParts(dep.destination);
+    if (parts.length < 2) {
+      return false;
+    }
+
+    if (direction === 'towards_riga') {
+      return parts[parts.length - 1] === 'riga';
+    }
+
+    if (direction === 'from_riga') {
+      return parts[0] === 'riga';
+    }
+
+    return true;
+  }
+
+  _routeParts(destination) {
+    return String(destination || '')
+      .split(/\s+[-–—]\s+/)
+      .map((part) => this._normalizeText(part))
+      .filter(Boolean);
+  }
+
+  _normalizeDirection(direction) {
+    const value = this._normalizeText(direction).replace(/[-\s]+/g, '_');
+
+    if (['towards_riga', 'toward_riga', 'to_riga'].includes(value)) {
+      return 'towards_riga';
+    }
+
+    if (value === 'from_riga') {
+      return 'from_riga';
+    }
+
+    if (!value || value === 'all') {
+      return 'all';
+    }
+
+    throw new Error('direction must be one of: all, towards_riga, from_riga');
+  }
+
+  _normalizeText(value) {
+    return String(value || '')
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  }
+
+  _emptyMessage() {
+    if (this._config.direction === 'towards_riga') {
+      return 'No upcoming trains towards Rīga found.';
+    }
+
+    if (this._config.direction === 'from_riga') {
+      return 'No upcoming trains from Rīga found.';
+    }
+
+    return 'No upcoming trains found.';
+  }
 }
 
 customElements.define('vivi-trains-card', ViviTrainsCard);
@@ -299,7 +388,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c VIVI-TRAINS-CARD %c v1.0.1 ',
+  '%c VIVI-TRAINS-CARD %c v1.0.2 ',
   'background:#F8DB22;color:#000;font-weight:700;padding:2px 4px;border-radius:3px 0 0 3px',
   'background:#1c1c1e;color:#F8DB22;font-weight:700;padding:2px 4px;border-radius:0 3px 3px 0',
 );

@@ -100,15 +100,11 @@ class ViviTrainsConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
         """Return the options flow."""
-        return ViviTrainsOptionsFlow(config_entry)
+        return ViviTrainsOptionsFlow()
 
 
 class ViviTrainsOptionsFlow(OptionsFlow):
     """Handle options for Vivi Trains."""
-
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialise options flow."""
-        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
