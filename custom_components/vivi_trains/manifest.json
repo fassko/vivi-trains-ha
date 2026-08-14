@@ -1,13 +1,13 @@
 {
   "domain": "vivi_trains",
   "name": "Vivi Trains (Latvian Rail)",
-  "version": "1.0.0",
-  "documentation": "https://github.com/fassko/vivi-trains-ha",
-  "issue_tracker": "https://github.com/fassko/vivi-trains-ha/issues",
   "codeowners": ["@fassko"],
-  "requirements": [],
-  "dependencies": ["http"],
   "config_flow": true,
+  "dependencies": ["http"],
+  "documentation": "https://github.com/fassko/vivi-trains-ha",
   "integration_type": "service",
-  "iot_class": "local_polling"
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/fassko/vivi-trains-ha/issues",
+  "requirements": [],
+  "version": "1.0.0"
 }
