@@ -3,7 +3,7 @@
  * Shows next departures from a configured Vivi train station.
  *
  * Installation:
- *   1. Copy this file to config/www/community/vivi-trains-card/
+ *   1. Install the Vivi Trains integration and restart Home Assistant.
  *   2. Add resource in Lovelace: /vivi_trains_frontend/vivi-trains-card.js
  *   3. Use card type: custom:vivi-trains-card
  *
@@ -299,7 +299,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c VIVI-TRAINS-CARD %c v1.0.0 ',
+  '%c VIVI-TRAINS-CARD %c v1.0.1 ',
   'background:#F8DB22;color:#000;font-weight:700;padding:2px 4px;border-radius:3px 0 0 3px',
   'background:#1c1c1e;color:#F8DB22;font-weight:700;padding:2px 4px;border-radius:0 3px 3px 0',
 );

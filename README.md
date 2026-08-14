@@ -87,6 +87,22 @@ To test before installing with HACS:
 4. Open `/vivi_trains_frontend/vivi-trains-card.js` from your HA base URL while logged in. It should return JavaScript.
 5. Add the Lovelace resource and card YAML above.
 
+## Troubleshooting
+
+### `Custom element doesn't exist: vivi-trains-card`
+
+Home Assistant shows this when the dashboard has not loaded the card JavaScript module.
+
+1. Confirm the integration is installed and Home Assistant has been restarted.
+2. Open `/vivi_trains_frontend/vivi-trains-card.js` from your Home Assistant base URL while logged in. It should display JavaScript.
+3. In **Settings → Dashboards → Resources**, confirm this resource exists:
+
+   | URL | Type |
+   |-----|------|
+   | `/vivi_trains_frontend/vivi-trains-card.js` | JavaScript module |
+
+4. Hard-refresh the Home Assistant browser tab after adding or changing the resource.
+
 To run the unit tests:
 
 ```bash

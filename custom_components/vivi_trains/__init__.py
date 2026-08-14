@@ -20,15 +20,16 @@ FRONTEND_URL = f"/{DOMAIN}_frontend"
 STATIC_REGISTERED = "static_registered"
 
 
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up shared Vivi Trains resources."""
+    await _async_register_frontend_path(hass)
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Vivi Trains from a config entry."""
+    await _async_register_frontend_path(hass)
     domain_data = hass.data.setdefault(DOMAIN, {})
-
-    if not domain_data.get(STATIC_REGISTERED):
-        await hass.http.async_register_static_paths(
-            [StaticPathConfig(FRONTEND_URL, str(FRONTEND_PATH), True)]
-        )
-        domain_data[STATIC_REGISTERED] = True
 
     coordinator = ViviTrainsCoordinator(hass, entry)
 
@@ -60,3 +61,16 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload config entry."""
     await async_unload_entry(hass, entry)
     await async_setup_entry(hass, entry)
+
+
+async def _async_register_frontend_path(hass: HomeAssistant) -> None:
+    """Register the Lovelace card static path once."""
+    domain_data = hass.data.setdefault(DOMAIN, {})
+
+    if domain_data.get(STATIC_REGISTERED):
+        return
+
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(FRONTEND_URL, str(FRONTEND_PATH), True)]
+    )
+    domain_data[STATIC_REGISTERED] = True
