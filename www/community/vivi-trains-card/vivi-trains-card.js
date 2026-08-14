@@ -38,6 +38,7 @@ class ViviTrainsCard extends HTMLElement {
       ...config,
     };
     this._config.direction = this._normalizeDirection(this._config.direction);
+    this._config.show_route_color = this._normalizeBoolean(this._config.show_route_color);
   }
 
   getCardSize() {
@@ -98,9 +99,9 @@ class ViviTrainsCard extends HTMLElement {
   }
 
   _renderRow(dep, isNext) {
-    const color = this._config.show_route_color && dep.route_color
-      ? this._routeColor(dep.route_color)
-      : '#F8DB22';
+    const colorDot = this._config.show_route_color
+      ? `<span class="color-dot" style="background:${this._routeColor(dep.route_color)}"></span>`
+      : '';
 
     const minText = dep.minutes_until === 0
       ? '<span class="now-badge">NOW</span>'
@@ -113,7 +114,7 @@ class ViviTrainsCard extends HTMLElement {
     return `
       <div class="${rowClass}">
         <span class="col-time">
-          <span class="color-dot" style="background:${color}"></span>
+          ${colorDot}
           ${this._escHtml(dep.time || '')}
         </span>
         <span class="col-min">${minText}</span>
@@ -126,11 +127,11 @@ class ViviTrainsCard extends HTMLElement {
     return `
       :host {
         --vivi-yellow: #F8DB22;
-        --vivi-bg: #1c1c1e;
-        --vivi-card-bg: #2c2c2e;
-        --vivi-border: #3a3a3c;
-        --vivi-text: #f5f5f7;
-        --vivi-muted: #8e8e93;
+        --vivi-card-bg: var(--ha-card-background, var(--card-background-color, #fff));
+        --vivi-border: var(--ha-card-border-color, var(--divider-color, #e0e0e0));
+        --vivi-text: var(--primary-text-color, #212121);
+        --vivi-muted: var(--secondary-text-color, #727272);
+        --vivi-hover-bg: var(--secondary-background-color, rgba(0, 0, 0, 0.04));
         --vivi-next-bg: rgba(248, 219, 34, 0.08);
         --vivi-next-border: rgba(248, 219, 34, 0.35);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -138,7 +139,7 @@ class ViviTrainsCard extends HTMLElement {
 
       ha-card.vivi-card {
         background: var(--vivi-card-bg);
-        border-radius: 16px;
+        border-radius: var(--ha-card-border-radius, 12px);
         overflow: hidden;
         color: var(--vivi-text);
         border: 1px solid var(--vivi-border);
@@ -148,9 +149,8 @@ class ViviTrainsCard extends HTMLElement {
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 14px 16px 10px;
+        padding: 14px 16px 12px;
         border-bottom: 1px solid var(--vivi-border);
-        background: linear-gradient(135deg, #1c1c1e 0%, #2c2c2e 100%);
       }
 
       .icon { font-size: 20px; }
@@ -192,7 +192,7 @@ class ViviTrainsCard extends HTMLElement {
         transition: background 0.15s;
       }
 
-      .row:hover { background: rgba(255,255,255,0.04); }
+      .row:hover { background: var(--vivi-hover-bg); }
 
       .row-next {
         background: var(--vivi-next-bg);
@@ -355,6 +355,24 @@ class ViviTrainsCard extends HTMLElement {
     throw new Error('direction must be one of: all, towards_riga, from_riga');
   }
 
+  _normalizeBoolean(value) {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = this._normalizeText(value);
+      if (['false', 'no', 'off', '0'].includes(normalized)) {
+        return false;
+      }
+      if (['true', 'yes', 'on', '1'].includes(normalized)) {
+        return true;
+      }
+    }
+
+    return Boolean(value);
+  }
+
   _normalizeText(value) {
     return String(value || '')
       .trim()
@@ -388,7 +406,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c VIVI-TRAINS-CARD %c v1.0.2 ',
+  '%c VIVI-TRAINS-CARD %c v1.0.3 ',
   'background:#F8DB22;color:#000;font-weight:700;padding:2px 4px;border-radius:3px 0 0 3px',
   'background:#1c1c1e;color:#F8DB22;font-weight:700;padding:2px 4px;border-radius:0 3px 3px 0',
 );
