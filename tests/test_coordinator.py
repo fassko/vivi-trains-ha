@@ -81,6 +81,8 @@ def _install_homeassistant_stubs() -> None:
     update_coordinator.DataUpdateCoordinator = DataUpdateCoordinator
     update_coordinator.UpdateFailed = UpdateFailed
     dt.now = lambda: datetime.now(timezone.utc)
+    dt.utcnow = lambda: datetime.now(timezone.utc)
+    dt.parse_datetime = datetime.fromisoformat
 
     sys.modules.update(
         {

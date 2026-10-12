@@ -6,6 +6,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 from typing import Any
+from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -24,6 +25,9 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from .schedule import ViviScheduleManager
 
 
 def _parse_time(t: str) -> tuple[int, int]:
@@ -50,7 +54,10 @@ def _normalize_departures_count(value: Any) -> int:
 class ViviTrainsCoordinator(DataUpdateCoordinator):
     """Coordinator that loads the Vivi schedule and computes next departures."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry,
+        schedule_manager: ViviScheduleManager | None = None,
+    ) -> None:
         """Initialise the coordinator."""
         super().__init__(
             hass,
@@ -69,6 +76,7 @@ class ViviTrainsCoordinator(DataUpdateCoordinator):
         self._schedule: list[dict] = []
         self._all_stops: dict[str, dict] = {}
         self._loaded = False
+        self.schedule_manager = schedule_manager
 
     # ------------------------------------------------------------------
     # Public helpers (used by sensor and config_flow)
@@ -95,7 +103,15 @@ class ViviTrainsCoordinator(DataUpdateCoordinator):
         """Load schedule data from disk (once)."""
         if self._loaded:
             return
-        data = self.load_full_schedule()
+        data = (
+            self.schedule_manager.data
+            if self.schedule_manager is not None
+            else self.load_full_schedule()
+        )
+        self.replace_schedule(data)
+
+    def replace_schedule(self, data: dict) -> None:
+        """Make a validated schedule available without reloading the entry."""
         self._all_stops = data.get("stops", {})
         self._schedule = data.get("schedule", {}).get(self.station_id, [])
         self._loaded = True
@@ -209,6 +225,14 @@ class ViviTrainsCoordinator(DataUpdateCoordinator):
                 "departures": departures,
                 "next_departure": departures[0] if departures else None,
                 "updated_at": dt_util.now().isoformat(),
+                "schedule_checked_at": (
+                    self.schedule_manager.checked_at
+                    if self.schedule_manager else None
+                ),
+                "schedule_updated_at": (
+                    self.schedule_manager.updated_at
+                    if self.schedule_manager else None
+                ),
             }
         except FileNotFoundError as err:
             raise UpdateFailed(f"Schedule data file not found: {err}") from err

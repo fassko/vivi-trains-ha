@@ -14,6 +14,10 @@ DEFAULT_SCAN_INTERVAL = 60  # seconds
 
 # Schedule data bundled with integration
 SCHEDULE_DATA_FILE = "vivi_schedule.json"
+GTFS_URL = "https://www.vivi.lv/uploads/GTFS.zip"
+SCHEDULE_CHECK_INTERVAL_DAYS = 7
+SCHEDULE_MANAGER = "schedule_manager"
+SCHEDULE_MANAGER_LOCK = "schedule_manager_lock"
 
 # Sensor
 ATTR_NEXT_DEPARTURES = "next_departures"

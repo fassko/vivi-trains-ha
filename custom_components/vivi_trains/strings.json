@@ -18,6 +18,11 @@
       "already_configured": "This station is already configured."
     }
   },
+  "entity": {
+    "button": {
+      "update_schedule": {"name": "Check schedule now"}
+    }
+  },
   "options": {
     "step": {
       "init": {

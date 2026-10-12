@@ -39,6 +39,9 @@ config/
 │       ├── config_flow.py
 │       ├── const.py
 │       ├── coordinator.py
+│       ├── schedule.py
+│       ├── gtfs.py
+│       ├── button.py
 │       ├── sensor.py
 │       ├── strings.json
 │       ├── translations/en.json
@@ -117,20 +120,24 @@ python3 -m unittest discover -s tests
 
 ## Entities created
 
-For each configured station, one sensor is created:
+For each configured station, a sensor and a **Check schedule now** button are created:
 
 | Entity | State | Attributes |
 |--------|-------|------------|
 | `sensor.vivi_<station>_next_departure` | `HH:MM` next departure | `minutes_until`, `destination`, `route_color`, `service_days`, `next_departures` (list) |
+| `button.vivi_<station>_check_schedule_now` | Last pressed time | Press to check Vivi's GTFS feed immediately |
 
 ## Schedule data
 
-The bundled `vivi_schedule.json` is pre-processed from the official Vivi GTFS open data feed (vivi.lv). It covers all 141 stations and 394 trips, including through-trains (e.g. Skulte → Rīga trains stopping at Carnikava).
+The bundled `vivi_schedule.json` is pre-processed from [Vivi's official GTFS feed](https://vivi.lv/lv/sadarbiba/atvertie-dati/). The current bundle contains 141 stations and 349 trips (feed dated 12 October 2026).
 
-To refresh the data, replace `vivi_schedule.json` with a freshly generated file (see the project repository for the generation script) and restart HA.
+When Home Assistant starts, the integration checks whether the last successful feed check was at least seven days ago. It checks again each day and downloads the feed when seven days have passed. A changed feed is saved in Home Assistant's `.storage` directory and applied to all configured station sensors without a restart. If the download fails, the last saved or bundled schedule stays in use and the next daily check retries.
+
+Press **Check schedule now** on any Vivi station device to check immediately. The button reports download errors in Home Assistant. All station devices share the same schedule, so pressing one button updates them all. The sensor attributes `schedule_checked_at` and `schedule_updated_at` show the last successful check and the last changed feed.
+
+To regenerate the bundled fallback for a release, download Vivi's `GTFS.zip` and run `python3 scripts/update_schedule.py /path/to/GTFS.zip`.
 
 ## Notes
 
-- The integration runs entirely **local** — no internet connection required after setup.
-- Schedule data is updated every 60 seconds in memory but the underlying GTFS data only needs refreshing seasonally (Vivi publishes new GTFS files with each timetable change).
+- Departures are computed locally every 60 seconds. The weekly schedule check needs internet access; departures continue to work from saved data while offline.
 - Times past midnight are represented as `24:MM`, `25:MM` etc. in the raw GTFS data and are handled correctly.

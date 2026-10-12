@@ -21,6 +21,7 @@ from .const import (
     DEFAULT_DEPARTURES_COUNT,
     DOMAIN,
     MAX_DEPARTURES_COUNT,
+    SCHEDULE_MANAGER,
 )
 from .coordinator import ViviTrainsCoordinator, _normalize_departures_count
 
@@ -45,9 +46,13 @@ class ViviTrainsConfigFlow(ConfigFlow, domain=DOMAIN):
         # Load station list (blocking I/O → executor)
         if not self._stations:
             try:
-                self._stations = await self.hass.async_add_executor_job(
-                    ViviTrainsCoordinator.get_station_list
-                )
+                manager = self.hass.data.get(DOMAIN, {}).get(SCHEDULE_MANAGER)
+                if manager is not None:
+                    self._stations = manager.data["station_list"]
+                else:
+                    self._stations = await self.hass.async_add_executor_job(
+                        ViviTrainsCoordinator.get_station_list
+                    )
             except Exception:  # noqa: BLE001
                 _LOGGER.exception("Failed to load station list")
                 return self.async_abort(reason="cannot_connect")

@@ -117,6 +117,8 @@ class ViviNextDepartureSensor(CoordinatorEntity, SensorEntity):
                 for d in departures
             ],
             "updated_at": data.get("updated_at"),
+            "schedule_checked_at": data.get("schedule_checked_at"),
+            "schedule_updated_at": data.get("schedule_updated_at"),
         }
 
     @property
