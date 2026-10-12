@@ -98,8 +98,9 @@ class FakeResponse:
     def raise_for_status(self):
         pass
 
-    async def read(self, size):
-        return self.data[:size]
+    async def iter_chunked(self, size):
+        for offset in range(0, len(self.data), 11):
+            yield self.data[offset:offset + 11]
 
 
 class FakeSession:

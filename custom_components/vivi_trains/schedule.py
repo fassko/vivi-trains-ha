@@ -132,9 +132,12 @@ class ViviScheduleManager:
                 GTFS_URL, timeout=ClientTimeout(total=45)
             ) as response:
                 response.raise_for_status()
-                archive = await response.content.read(_MAX_ARCHIVE_BYTES + 1)
-            if len(archive) > _MAX_ARCHIVE_BYTES:
-                raise ValueError("Vivi GTFS archive exceeds 10 MB")
+                archive_data = bytearray()
+                async for chunk in response.content.iter_chunked(64 * 1024):
+                    archive_data.extend(chunk)
+                    if len(archive_data) > _MAX_ARCHIVE_BYTES:
+                        raise ValueError("Vivi GTFS archive exceeds 10 MB")
+            archive = bytes(archive_data)
 
             new_data = await self.hass.async_add_executor_job(build_schedule, archive)
             if not self._valid_data(new_data):
