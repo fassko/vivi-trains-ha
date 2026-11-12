@@ -4,9 +4,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import unicodedata
 from datetime import datetime, timedelta
 from typing import Any
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -19,12 +21,15 @@ from .const import (
     DAY_NAMES,
     DEFAULT_DEPARTURES_COUNT,
     DEFAULT_SCAN_INTERVAL,
+    DEPARTURE_LOOKAHEAD_DAYS,
     DOMAIN,
     MAX_DEPARTURES_COUNT,
+    RIGA_TIME_ZONE,
     SCHEDULE_DATA_FILE,
 )
 
 _LOGGER = logging.getLogger(__name__)
+_RIGA = ZoneInfo(RIGA_TIME_ZONE)
 
 if TYPE_CHECKING:
     from .schedule import ViviScheduleManager
@@ -39,6 +44,36 @@ def _parse_time(t: str) -> tuple[int, int]:
 def _minutes_from_midnight(t: str) -> int:
     h, m = _parse_time(t)
     return h * 60 + m
+
+
+def as_riga(now: datetime) -> datetime:
+    """Return `now` on the Latvian timetable clock."""
+    if now.tzinfo is None:
+        return now.replace(tzinfo=_RIGA)
+    return now.astimezone(_RIGA)
+
+
+def _normalize_name(value: str) -> str:
+    text = unicodedata.normalize("NFD", value or "")
+    text = "".join(char for char in text if unicodedata.category(char) != "Mn")
+    return " ".join(text.casefold().split())
+
+
+def _same_minute(scheduled: datetime, raw: str) -> bool:
+    text = str(raw or "").strip().replace("T", " ")
+    if len(text) < 16:
+        return False
+    return scheduled.strftime("%Y-%m-%d %H:%M") == text[:16]
+
+
+def _day_label(when: datetime, now: datetime) -> str:
+    """Label a departure that is not on today's timetable date."""
+    delta_days = (when.date() - now.date()).days
+    if delta_days == 0:
+        return ""
+    if delta_days == 1:
+        return "Tomorrow"
+    return DAY_NAMES[when.weekday()]
 
 
 def _normalize_departures_count(value: Any) -> int:
@@ -75,6 +110,7 @@ class ViviTrainsCoordinator(DataUpdateCoordinator):
         )
         self._schedule: list[dict] = []
         self._all_stops: dict[str, dict] = {}
+        self._station_name = ""
         self._loaded = False
         self.schedule_manager = schedule_manager
 
@@ -114,6 +150,7 @@ class ViviTrainsCoordinator(DataUpdateCoordinator):
         """Make a validated schedule available without reloading the entry."""
         self._all_stops = data.get("stops", {})
         self._schedule = data.get("schedule", {}).get(self.station_id, [])
+        self._station_name = self._all_stops.get(self.station_id, {}).get("name", "")
         self._loaded = True
 
     def _is_service_active(self, trip: dict, service_date: datetime) -> bool:
@@ -142,6 +179,37 @@ class ViviTrainsCoordinator(DataUpdateCoordinator):
         dow = service_date.weekday()  # 0=Monday
         return bool(days[dow])
 
+    def _station_name_for_matching(self) -> str:
+        if getattr(self, "_station_name", ""):
+            return self._station_name
+        stops = getattr(self, "_all_stops", {}) or {}
+        station_id = getattr(self, "station_id", "")
+        return (stops.get(station_id) or {}).get("name", "")
+
+    def _live_train(self, trip_id: str) -> dict | None:
+        """Return a live train record, including a test override when present."""
+        if hasattr(self, "_live_trains"):
+            return (self._live_trains or {}).get(str(trip_id))
+        manager = getattr(self, "schedule_manager", None)
+        realtime = getattr(manager, "realtime", None)
+        if realtime is None:
+            return None
+        return realtime.train(str(trip_id))
+
+    def _live_stop(self, trip_id: str, scheduled: datetime) -> dict | None:
+        live = self._live_train(trip_id)
+        if not live:
+            return None
+        wanted = _normalize_name(self._station_name_for_matching())
+        if not wanted:
+            return None
+        for stop in live.get("stops") or []:
+            if _normalize_name(stop.get("title", "")) != wanted:
+                continue
+            if _same_minute(scheduled, stop.get("departure", "")):
+                return {"live": live, "stop": stop}
+        return None
+
     def _get_next_departures(self, now: datetime, count: int) -> list[dict]:
         """Return the next `count` departures from self.station_id after `now`."""
         self._ensure_loaded()
@@ -150,8 +218,9 @@ class ViviTrainsCoordinator(DataUpdateCoordinator):
         service_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
         # GTFS times may exceed 24:00. Include yesterday's service day so
-        # 24:xx/25:xx departures just after midnight are still considered.
-        for service_day_offset in range(-1, 3):
+        # 24:xx/25:xx departures just after midnight are still considered,
+        # then keep walking forward until the next operating day is included.
+        for service_day_offset in range(-1, DEPARTURE_LOOKAHEAD_DAYS + 1):
             check_date = service_midnight + timedelta(days=service_day_offset)
 
             for trip in self._schedule:
@@ -160,22 +229,45 @@ class ViviTrainsCoordinator(DataUpdateCoordinator):
                     continue
 
                 dep_minutes = _minutes_from_midnight(dep_str)
-                dep_dt = check_date + timedelta(minutes=dep_minutes)
+                scheduled = check_date + timedelta(minutes=dep_minutes)
 
                 if not self._is_service_active(trip, check_date):
                     continue
 
-                if dep_dt <= now:
-                    continue  # already departed
+                trip_id = trip.get("trip_id", "")
+                placed = self._live_stop(trip_id, scheduled)
+                delay = 0
+                if placed is not None:
+                    live = placed["live"]
+                    stop_index = placed["stop"].get("index")
+                    current_index = live.get("current_index")
+                    if live.get("finished"):
+                        continue
+                    if (
+                        current_index is not None
+                        and stop_index is not None
+                        and current_index > stop_index
+                    ):
+                        continue
+                    delay = int(live.get("delay") or 0)
+                    departure = scheduled + timedelta(minutes=delay)
+                    if departure <= now:
+                        continue
+                elif scheduled <= now:
+                    continue
+                else:
+                    departure = scheduled
 
-                minutes_until = int((dep_dt - now).total_seconds() // 60)
-
+                minutes_until = int((departure - now).total_seconds() // 60)
                 results.append({
                     "departure_time": dep_str,
-                    "departure_datetime": dep_dt.isoformat(),
+                    "clock_time": departure.strftime("%H:%M"),
+                    "day_label": _day_label(departure, now),
+                    "departure_datetime": departure.isoformat(),
                     "minutes_until": minutes_until,
+                    "delay_minutes": delay,
                     "destination": trip.get("headsign", ""),
-                    "trip_id": trip.get("trip_id", ""),
+                    "trip_id": trip_id,
                     "route_color": trip.get("color", "#F8DB22"),
                     "service_days": self._format_days(trip.get("svc", {}).get("days", [])),
                 })
@@ -211,7 +303,7 @@ class ViviTrainsCoordinator(DataUpdateCoordinator):
             # Load schedule in executor to avoid blocking event loop
             await self.hass.async_add_executor_job(self._ensure_loaded)
 
-            now = dt_util.now()
+            now = as_riga(dt_util.now())
 
             departures = await self.hass.async_add_executor_job(
                 self._get_next_departures, now, self.departures_count
@@ -222,6 +314,8 @@ class ViviTrainsCoordinator(DataUpdateCoordinator):
             return {
                 "station_id": self.station_id,
                 "station_name": station_info.get("name", self.station_id),
+                "latitude": station_info.get("lat"),
+                "longitude": station_info.get("lon"),
                 "departures": departures,
                 "next_departure": departures[0] if departures else None,
                 "updated_at": dt_util.now().isoformat(),

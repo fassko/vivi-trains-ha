@@ -11,6 +11,10 @@ CONF_DEPARTURES_COUNT = "departures_count"
 DEFAULT_DEPARTURES_COUNT = 5
 MAX_DEPARTURES_COUNT = 20
 DEFAULT_SCAN_INTERVAL = 60  # seconds
+DEPARTURE_LOOKAHEAD_DAYS = 7
+REALTIME_WS_URL = "wss://trainmap.pv.lv/ws"
+REALTIME_REFRESH_SECONDS = 2
+RIGA_TIME_ZONE = "Europe/Riga"
 
 # Schedule data bundled with integration
 SCHEDULE_DATA_FILE = "vivi_schedule.json"
@@ -22,6 +26,8 @@ SCHEDULE_MANAGER_LOCK = "schedule_manager_lock"
 # Sensor
 ATTR_NEXT_DEPARTURES = "next_departures"
 ATTR_MINUTES_UNTIL = "minutes_until"
+ATTR_DELAY_MINUTES = "delay_minutes"
+ATTR_DAY_LABEL = "day_label"
 ATTR_DESTINATION = "destination"
 ATTR_ORIGIN = "origin"
 ATTR_PLATFORM = "platform"

@@ -115,6 +115,13 @@ class ViviTrainsCard extends HTMLElement {
       : dep.minutes_until === 1
         ? '1 min'
         : `${dep.minutes_until} min`;
+    const delayMinutes = Number(dep.delay_minutes);
+    const delay = Number.isFinite(delayMinutes) && delayMinutes > 0
+      ? `<span class="delay">+${delayMinutes}</span>`
+      : '';
+    const day = dep.day_label
+      ? `<span class="day-label">${this._escHtml(dep.day_label)}</span>`
+      : '';
 
     const rowClass = isNext ? 'row row-next' : 'row';
 
@@ -122,7 +129,10 @@ class ViviTrainsCard extends HTMLElement {
       <div class="${rowClass}">
         <span class="col-time">
           ${colorDot}
-          ${this._escHtml(dep.time || '')}
+          <span class="time-stack">
+            <span>${this._escHtml(dep.time || '')}${delay}</span>
+            ${day}
+          </span>
         </span>
         <span class="col-min">${minText}</span>
         <span class="col-dest">${this._escHtml(dep.destination || '—')}</span>
@@ -246,6 +256,26 @@ class ViviTrainsCard extends HTMLElement {
         font-size: 15px;
         font-weight: 600;
         font-variant-numeric: tabular-nums;
+      }
+
+      .time-stack {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+
+      .day-label {
+        color: var(--vivi-muted);
+        font-size: 10px;
+        font-weight: 600;
+        line-height: 1.2;
+      }
+
+      .delay {
+        margin-left: 6px;
+        color: #e07a00;
+        font-size: 11px;
+        font-weight: 700;
       }
 
       .color-dot {
@@ -501,7 +531,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c VIVI-TRAINS-CARD %c v1.0.4 ',
+  '%c VIVI-TRAINS-CARD %c v1.1.0 ',
   'background:#F8DB22;color:#000;font-weight:700;padding:2px 4px;border-radius:3px 0 0 3px',
   'background:#1c1c1e;color:#F8DB22;font-weight:700;padding:2px 4px;border-radius:0 3px 3px 0',
 );

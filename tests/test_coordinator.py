@@ -108,6 +108,7 @@ from custom_components.vivi_trains.coordinator import (  # noqa: E402
     _normalize_departures_count,
     _parse_time,
 )
+from custom_components.vivi_trains.realtime import build_map_trains  # noqa: E402
 
 
 def _trip(
@@ -226,6 +227,161 @@ class DepartureSelectionTest(unittest.TestCase):
         departures = coordinator._get_next_departures(now, 1)
 
         self.assertEqual(departures[0]["trip_id"], "morning")
+
+    def test_after_last_train_shows_the_next_day(self) -> None:
+        coordinator = _coordinator_with_schedule(
+            [
+                _trip("23:40", trip_id="last"),
+                _trip("06:10", trip_id="morning"),
+            ]
+        )
+        now = datetime(2026, 8, 17, 23, 50, tzinfo=timezone.utc)
+
+        departure = coordinator._get_next_departures(now, 1)[0]
+
+        self.assertEqual(departure["trip_id"], "morning")
+        self.assertEqual(departure["clock_time"], "06:10")
+        self.assertEqual(departure["day_label"], "Tomorrow")
+        self.assertNotEqual(departure["trip_id"], "last")
+
+    def test_searches_a_week_ahead_for_the_next_operating_day(self) -> None:
+        coordinator = _coordinator_with_schedule(
+            [_trip("08:00", trip_id="monday", days=[1, 0, 0, 0, 0, 0, 0])]
+        )
+        tuesday = datetime(2026, 8, 18, 12, 0, tzinfo=timezone.utc)
+
+        departure = coordinator._get_next_departures(tuesday, 1)[0]
+
+        self.assertEqual(departure["clock_time"], "08:00")
+        self.assertEqual(departure["day_label"], "Mon")
+        self.assertTrue(departure["departure_datetime"].startswith("2026-08-24"))
+
+    def test_overnight_gtfs_time_is_shown_as_the_next_day_clock(self) -> None:
+        data = ViviTrainsCoordinator.load_full_schedule()
+        coordinator = _coordinator_with_schedule(data["schedule"]["230"])
+        now = datetime(2026, 11, 12, 23, 40, tzinfo=timezone.utc)
+
+        departure = coordinator._get_next_departures(now, 1)[0]
+
+        self.assertEqual(departure["departure_time"], "24:31")
+        self.assertEqual(departure["clock_time"], "00:31")
+        self.assertEqual(departure["day_label"], "Tomorrow")
+
+    def test_after_carnikava_overnight_train_shows_the_next_morning(self) -> None:
+        data = ViviTrainsCoordinator.load_full_schedule()
+        coordinator = _coordinator_with_schedule(data["schedule"]["230"])
+        now = datetime(2026, 11, 13, 0, 40, tzinfo=timezone.utc)
+
+        departure = coordinator._get_next_departures(now, 1)[0]
+
+        self.assertEqual(departure["trip_id"], "6101")
+        self.assertEqual(departure["clock_time"], "05:07")
+        self.assertNotEqual(departure["trip_id"], "6170")
+
+
+class LiveDelayTest(unittest.TestCase):
+    def test_adds_delay_while_the_train_has_not_reached_the_station(self) -> None:
+        coordinator = _coordinator_with_schedule([_trip("12:05", trip_id="6119")])
+        coordinator._live_trains = {
+            "6119": _live(delay=3, current_index=2, stop_index=4),
+        }
+        now = datetime(2026, 8, 17, 12, 0, tzinfo=timezone.utc)
+
+        departure = coordinator._get_next_departures(now, 1)[0]
+
+        self.assertEqual(departure["delay_minutes"], 3)
+        self.assertEqual(departure["minutes_until"], 8)
+        self.assertEqual(departure["clock_time"], "12:08")
+
+    def test_keeps_a_late_train_until_its_predicted_time(self) -> None:
+        coordinator = _coordinator_with_schedule([_trip("12:05", trip_id="6119")])
+        coordinator._live_trains = {
+            "6119": _live(delay=3, current_index=2, stop_index=4),
+        }
+        now = datetime(2026, 8, 17, 12, 6, tzinfo=timezone.utc)
+
+        departure = coordinator._get_next_departures(now, 1)[0]
+
+        self.assertEqual(departure["minutes_until"], 2)
+        self.assertEqual(departure["clock_time"], "12:08")
+
+    def test_omits_a_train_that_has_passed_the_station(self) -> None:
+        coordinator = _coordinator_with_schedule(
+            [_trip("12:05", trip_id="6119", end="20260817")]
+        )
+        coordinator._live_trains = {
+            "6119": _live(delay=0, current_index=10, stop_index=4),
+        }
+        now = datetime(2026, 8, 17, 11, 50, tzinfo=timezone.utc)
+
+        self.assertEqual(coordinator._get_next_departures(now, 1), [])
+
+    def test_live_pass_does_not_remove_the_same_train_on_a_later_day(self) -> None:
+        coordinator = _coordinator_with_schedule([_trip("12:05", trip_id="6119")])
+        coordinator._live_trains = {
+            "6119": _live(delay=0, current_index=10, stop_index=4),
+        }
+        now = datetime(2026, 8, 17, 11, 0, tzinfo=timezone.utc)
+
+        departure = coordinator._get_next_departures(now, 1)[0]
+
+        self.assertTrue(departure["departure_datetime"].startswith("2026-08-18"))
+        self.assertEqual(departure["delay_minutes"], 0)
+
+    def test_without_a_live_snapshot_uses_the_timetable(self) -> None:
+        coordinator = _coordinator_with_schedule([_trip("12:05", trip_id="6119")])
+        now = datetime(2026, 8, 17, 12, 0, tzinfo=timezone.utc)
+
+        departure = coordinator._get_next_departures(now, 1)[0]
+
+        self.assertEqual(departure["delay_minutes"], 0)
+        self.assertEqual(departure["minutes_until"], 5)
+        self.assertEqual(departure["clock_time"], "12:05")
+
+
+def _live(*, delay: int, current_index: int, stop_index: int) -> dict:
+    return {
+        "delay": delay,
+        "finished": False,
+        "current_index": current_index,
+        "stops": [{
+            "title": "Station",
+            "index": stop_index,
+            "departure": "2026-08-17 12:05:00",
+        }],
+    }
+
+
+class MapSnapshotTest(unittest.TestCase):
+    def test_keeps_position_color_delay_and_polyline(self) -> None:
+        trains = build_map_trains([
+            {
+                "name": "Skulte - Rīga",
+                "trainColor": {"color": "#B388FF"},
+                "stopCoordArray": [["56.9", "24.1"], [56.7, 24.6]],
+                "returnValue": {
+                    "train": "6119",
+                    "arrivingTime": 4,
+                    "isGpsActive": True,
+                    "animatedCoord": [56.7, 24.6],
+                    "nextStopObj": {"title": "Carnikava"},
+                },
+            },
+            {
+                "name": "No position",
+                "returnValue": {"train": "1", "arrivingTime": 1},
+            },
+        ])
+
+        self.assertEqual(len(trains), 1)
+        self.assertEqual(trains[0]["train"], "6119")
+        self.assertEqual(trains[0]["lat"], 56.7)
+        self.assertEqual(trains[0]["lon"], 24.6)
+        self.assertEqual(trains[0]["color"], "#B388FF")
+        self.assertEqual(trains[0]["delay"], 4)
+        self.assertEqual(trains[0]["next_stop"], "Carnikava")
+        self.assertEqual(trains[0]["polyline"], [[56.9, 24.1], [56.7, 24.6]])
+        self.assertTrue(trains[0]["gps"])
 
 
 class DeparturesCountTest(unittest.TestCase):

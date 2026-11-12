@@ -19,6 +19,7 @@ PLATFORMS = ["sensor", "button"]
 FRONTEND_PATH = Path(__file__).parent / "frontend"
 FRONTEND_URL = f"/{DOMAIN}_frontend"
 STATIC_REGISTERED = "static_registered"
+WS_REGISTERED = "ws_registered"
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -97,3 +98,8 @@ async def _async_register_frontend_path(hass: HomeAssistant) -> None:
         [StaticPathConfig(FRONTEND_URL, str(FRONTEND_PATH), True)]
     )
     domain_data[STATIC_REGISTERED] = True
+    if not domain_data.get(WS_REGISTERED):
+        from .websocket import async_register_commands
+
+        async_register_commands(hass)
+        domain_data[WS_REGISTERED] = True

@@ -7,5 +7,6 @@ Settings > Devices & Services, then add the Lovelace resource:
 
 ```text
 /vivi_trains_frontend/vivi-trains-card.js
+/vivi_trains_frontend/vivi-trains-map.js
 ```
 

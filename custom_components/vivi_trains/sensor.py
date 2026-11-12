@@ -12,6 +12,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    ATTR_DAY_LABEL,
+    ATTR_DELAY_MINUTES,
     ATTR_DESTINATION,
     ATTR_MINUTES_UNTIL,
     ATTR_NEXT_DEPARTURES,
@@ -81,7 +83,7 @@ class ViviNextDepartureSensor(CoordinatorEntity, SensorEntity):
         next_dep = self.coordinator.data.get("next_departure")
         if not next_dep:
             return None
-        return next_dep.get("departure_time")
+        return next_dep.get("clock_time") or next_dep.get("departure_time")
 
     @property
     def native_unit_of_measurement(self) -> str | None:
@@ -100,19 +102,26 @@ class ViviNextDepartureSensor(CoordinatorEntity, SensorEntity):
 
         return {
             ATTR_MINUTES_UNTIL: next_dep.get("minutes_until"),
+            ATTR_DELAY_MINUTES: next_dep.get("delay_minutes", 0),
+            ATTR_DAY_LABEL: next_dep.get("day_label") or "",
             ATTR_DESTINATION: next_dep.get("destination"),
             ATTR_ROUTE_COLOR: next_dep.get("route_color"),
             ATTR_SERVICE_DAYS: next_dep.get("service_days"),
             "departure_datetime": next_dep.get("departure_datetime"),
             "station_name": data.get("station_name"),
             "station_id": self._station_id,
+            "latitude": data.get("latitude"),
+            "longitude": data.get("longitude"),
             ATTR_NEXT_DEPARTURES: [
                 {
-                    "time": d.get("departure_time"),
+                    "time": d.get("clock_time") or d.get("departure_time"),
+                    "day_label": d.get("day_label") or "",
                     "minutes_until": d.get("minutes_until"),
+                    "delay_minutes": d.get("delay_minutes") or 0,
                     "destination": d.get("destination"),
                     "route_color": d.get("route_color"),
                     "service_days": d.get("service_days"),
+                    "departure_datetime": d.get("departure_datetime"),
                 }
                 for d in departures
             ],

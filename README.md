@@ -18,11 +18,12 @@ custom_components/vivi_trains/   ← drop into config/custom_components/
 4. Restart Home Assistant.
 5. Go to **Settings → Devices & Services → Add Integration**, search for **Vivi Trains**, and choose a station.
 
-Then add the dashboard resource:
+Then add the dashboard resources:
 
 | URL | Type |
 |-----|------|
 | `/vivi_trains_frontend/vivi-trains-card.js` | JavaScript module |
+| `/vivi_trains_frontend/vivi-trains-map.js` | JavaScript module |
 
 ### Manual installation
 
@@ -49,7 +50,9 @@ config/
 │       ├── brand/
 │       │   └── icon.png
 │       └── frontend/
-│           └── vivi-trains-card.js
+│           ├── vivi-trains-card.js
+│           ├── vivi-trains-map.js
+│           └── vendor/leaflet.js
 ```
 
 #### Step 2 — Restart Home Assistant
@@ -67,6 +70,7 @@ In **Settings → Dashboards → (three-dot menu) → Resources**, add:
 | URL | Type |
 |-----|------|
 | `/vivi_trains_frontend/vivi-trains-card.js` | JavaScript module |
+| `/vivi_trains_frontend/vivi-trains-map.js` | JavaScript module |
 
 #### Step 5 — Add card to dashboard
 
@@ -85,6 +89,19 @@ Use `direction: towards_riga` to show trains whose route ends in Rīga, for exam
 Use `direction: from_riga` to show trains whose route starts from Rīga, for example `Rīga - Skulte`.
 The filter applies to the departures already exposed by the sensor, so increase the integration's departures count if you want the card to reliably show several matching departures.
 When more matching departures are available than `max_departures`, the card shows Previous/Next controls.
+
+A running train shows its predicted departure. `+3` means the live feed currently reports that train 3 minutes late. A time after midnight is shown on the clock of the next day (`00:31`) with a day label, instead of the raw GTFS value `24:31`.
+
+The map card shows every train currently running:
+
+```yaml
+type: custom:vivi-trains-map
+entity: sensor.vivi_carnikava_next_departure  # optional, centers on this station
+height: 480                                   # optional
+zoom: 9                                       # optional
+```
+
+Leave `entity` out to open the map on Latvia. The map uses the integration's live connection, so the browser does not contact the train map directly.
 
 ## Local testing
 
@@ -109,6 +126,7 @@ Home Assistant shows this when the dashboard has not loaded the card JavaScript 
    | URL | Type |
    |-----|------|
    | `/vivi_trains_frontend/vivi-trains-card.js` | JavaScript module |
+   | `/vivi_trains_frontend/vivi-trains-map.js` | JavaScript module |
 
 4. Hard-refresh the Home Assistant browser tab after adding or changing the resource.
 
@@ -124,7 +142,7 @@ For each configured station, a sensor and a **Check schedule now** button are cr
 
 | Entity | State | Attributes |
 |--------|-------|------------|
-| `sensor.vivi_<station>_next_departure` | `HH:MM` next departure | `minutes_until`, `destination`, `route_color`, `service_days`, `next_departures` (list) |
+| `sensor.vivi_<station>_next_departure` | `HH:MM` next departure | `minutes_until`, `delay_minutes`, `day_label`, `destination`, `route_color`, `service_days`, `latitude`, `longitude`, `next_departures` (list) |
 | `button.vivi_<station>_check_schedule_now` | Last pressed time | Press to check Vivi's GTFS feed immediately |
 
 ## Schedule data
@@ -139,5 +157,5 @@ To regenerate the bundled fallback for a release, download Vivi's `GTFS.zip` and
 
 ## Notes
 
-- Departures are computed locally every 60 seconds. The weekly schedule check needs internet access; departures continue to work from saved data while offline.
-- Times past midnight are represented as `24:MM`, `25:MM` etc. in the raw GTFS data and are handled correctly.
+- Departures are computed locally every 60 seconds, and again shortly after a live delay update. The weekly schedule check and the live train feed need internet access; departures continue to work from saved data while offline.
+- Times past midnight are stored as `24:MM`, `25:MM` etc. in the raw GTFS data. The sensor and cards show the real clock time on that calendar day.

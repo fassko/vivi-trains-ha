@@ -15,9 +15,15 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, GTFS_URL, SCHEDULE_CHECK_INTERVAL_DAYS
+from .const import (
+    DOMAIN,
+    GTFS_URL,
+    REALTIME_REFRESH_SECONDS,
+    SCHEDULE_CHECK_INTERVAL_DAYS,
+)
 from .coordinator import ViviTrainsCoordinator
 from .gtfs import build_schedule
+from .realtime import ViviRealtimeClient
 
 _LOGGER = logging.getLogger(__name__)
 _MAX_ARCHIVE_BYTES = 10 * 1024 * 1024
@@ -43,6 +49,8 @@ class ViviScheduleManager:
         self.checksum: str | None = None
         self.checked_at: str | None = None
         self.updated_at: str | None = None
+        self.realtime = ViviRealtimeClient(hass, self._on_realtime_change)
+        self._refresh_task: asyncio.Task | None = None
 
     async def async_initialize(self) -> None:
         """Load the last downloaded schedule, falling back to bundled data."""
@@ -107,6 +115,7 @@ class ViviScheduleManager:
             self._startup_task = self.hass.async_create_task(
                 self._async_periodic_check(dt_util.now())
             )
+        self.realtime.start()
 
     def stop(self) -> None:
         if self._unsub is not None:
@@ -114,6 +123,30 @@ class ViviScheduleManager:
             self._unsub = None
         if self._startup_task is not None and not self._startup_task.done():
             self._startup_task.cancel()
+        if self._refresh_task is not None and not self._refresh_task.done():
+            self._refresh_task.cancel()
+        self.realtime.stop()
+
+    def _on_realtime_change(self) -> None:
+        """Refresh station sensors shortly after the live snapshot changes."""
+        if self._refresh_task is not None and not self._refresh_task.done():
+            self._refresh_task.cancel()
+        create_task = getattr(self.hass, "async_create_task", None)
+        if create_task is None:
+            return
+        self._refresh_task = create_task(self._refresh_after_delay())
+
+    async def _refresh_after_delay(self) -> None:
+        try:
+            await asyncio.sleep(REALTIME_REFRESH_SECONDS)
+        except asyncio.CancelledError:
+            return
+        coordinators = tuple(self._coordinators)
+        if coordinators:
+            await asyncio.gather(
+                *(coordinator.async_request_refresh() for coordinator in coordinators),
+                return_exceptions=True,
+            )
 
     async def _async_periodic_check(self, _now) -> None:
         try:
