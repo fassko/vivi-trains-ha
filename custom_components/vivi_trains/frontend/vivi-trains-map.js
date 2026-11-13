@@ -144,6 +144,13 @@ class ViviTrainsMap extends HTMLElement {
           background: #dbe7dc;
           touch-action: none;
         }
+        .map .leaflet-container,
+        .map .leaflet-container.leaflet-touch-zoom,
+        .map .leaflet-container.leaflet-touch-drag,
+        .map .maplibregl-canvas-container,
+        .map .maplibregl-canvas-container .maplibregl-canvas {
+          touch-action: none;
+        }
         .map.dark { background: #191b2c; }
         .leaflet-bar a.vivi-home,
         .maplibregl-ctrl-group button.vivi-home {
@@ -169,12 +176,13 @@ class ViviTrainsMap extends HTMLElement {
         }
         .status {
           position: absolute;
-          z-index: 500;
+          z-index: 2;
           left: 12px;
-          right: 12px;
-          top: 12px;
+          right: 52px;
+          bottom: 12px;
           padding: 8px 10px;
           border-radius: 8px;
+          pointer-events: none;
           background: var(--ha-card-background, rgba(255, 255, 255, 0.92));
           color: var(--primary-text-color, #212121);
           font-size: 13px;
@@ -272,6 +280,14 @@ class ViviTrainsMap extends HTMLElement {
       zoom: home.zoom,
       minZoom: 1,
       maxZoom: 20,
+      interactive: true,
+      dragPan: true,
+      scrollZoom: true,
+      boxZoom: true,
+      doubleClickZoom: true,
+      touchZoomRotate: true,
+      keyboard: true,
+      cooperativeGestures: false,
       dragRotate: false,
       pitchWithRotate: false,
       touchPitch: false,
@@ -287,8 +303,8 @@ class ViviTrainsMap extends HTMLElement {
       this._destroyMap();
       return false;
     }
-    if (map.touchZoomRotate) map.touchZoomRotate.disableRotation();
-    if (map.keyboard) map.keyboard.disableRotation();
+    _allowShadowTouches(map);
+    _enableVectorGestures(map);
     map.addControl(new maplibre.NavigationControl({ showCompass: false }), "top-left");
     map.addControl(new HomeControl(this), "top-left");
     map.addControl(new maplibre.AttributionControl({ compact: true }), "bottom-right");
@@ -308,10 +324,12 @@ class ViviTrainsMap extends HTMLElement {
     const home = this._homeView();
     this._map = leaflet.map(container, {
       zoomControl: true,
+      dragging: true,
       scrollWheelZoom: true,
       touchZoom: true,
       doubleClickZoom: true,
       boxZoom: true,
+      keyboard: true,
       maxZoom: token ? 20 : 19,
     }).setView(home.center, home.zoom);
     this._engine = "raster";
@@ -657,12 +675,21 @@ class ViviTrainsMap extends HTMLElement {
   }
 
   _keepGesturesOnMap(container) {
-    // Lovelace scrolls the dashboard on wheel and touch. Stop those events
-    // after the map has used them, so pinch, drag, and scroll zoom the map.
-    const stop = (event) => event.stopPropagation();
-    container.addEventListener("wheel", stop);
-    container.addEventListener("touchstart", stop);
-    container.addEventListener("touchmove", stop);
+    // Lovelace scrolls the dashboard on wheel and touch. The map handles the
+    // gesture first. Wheel listeners sit on the map element, so stopping the
+    // event here only blocks the dashboard. Leaflet's drag and pinch listen
+    // on document, outside this shadow root, so those touches must be allowed
+    // to leave the card. The vector map handles touches on its own canvas.
+    container.addEventListener("wheel", (event) => {
+      event.stopPropagation();
+    }, { passive: false });
+    container.addEventListener("touchstart", (event) => {
+      if (this._engine !== "raster") event.stopPropagation();
+    }, { passive: true });
+    container.addEventListener("touchmove", (event) => {
+      if (event.cancelable) event.preventDefault();
+      if (this._engine !== "raster") event.stopPropagation();
+    }, { passive: false });
   }
 
   _homeView() {
@@ -788,6 +815,46 @@ function _collapseAttribution(map) {
   };
   map.on("styledata", finish);
   map.on("idle", finish);
+}
+
+function _enableVectorGestures(map) {
+  if (map.dragPan) map.dragPan.enable();
+  if (map.scrollZoom) map.scrollZoom.enable();
+  if (map.boxZoom) map.boxZoom.enable();
+  if (map.doubleClickZoom) map.doubleClickZoom.enable();
+  if (map.touchZoomRotate) {
+    map.touchZoomRotate.enable();
+    map.touchZoomRotate.disableRotation();
+  }
+  if (map.keyboard) {
+    map.keyboard.enable();
+    map.keyboard.disableRotation();
+  }
+  if (map.dragRotate) map.dragRotate.disable();
+  if (map.touchPitch) map.touchPitch.disable();
+}
+
+function _allowShadowTouches(map) {
+  // MapLibre keeps a touch only when its target is inside the canvas. In a
+  // shadow root the target can be the card instead, which drops pan and pinch.
+  const handlers = map.handlers;
+  const el = handlers && handlers._el;
+  if (!handlers || !el || handlers._viviShadowTouch) return;
+  handlers._viviShadowTouch = true;
+  handlers._getMapTouches = (touches) => {
+    const kept = [];
+    for (const touch of touches || []) {
+      const target = touch.target;
+      if (!target) continue;
+      if (el.contains(target)) {
+        kept.push(touch);
+        continue;
+      }
+      const root = target.shadowRoot;
+      if (root && root.contains(el)) kept.push(touch);
+    }
+    return kept;
+  };
 }
 
 function _esc(value) {
@@ -1195,7 +1262,7 @@ window.customCards.push({
 });
 
 console.info(
-  "%c VIVI-TRAINS-MAP %c v1.4.0 ",
+  "%c VIVI-TRAINS-MAP %c v1.4.1 ",
   "background:#F8DB22;color:#000;font-weight:700;padding:2px 4px;border-radius:3px 0 0 3px",
   "background:#1c1c1e;color:#F8DB22;font-weight:700;padding:2px 4px;border-radius:0 3px 3px 0",
 );
