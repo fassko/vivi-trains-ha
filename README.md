@@ -52,7 +52,11 @@ config/
 │       └── frontend/
 │           ├── vivi-trains-card.js
 │           ├── vivi-trains-map.js
-│           └── vendor/leaflet.js
+│           └── vendor/
+│               ├── leaflet.css
+│               ├── leaflet.js
+│               ├── maplibre-gl.css
+│               └── maplibre-gl.js
 ```
 
 #### Step 2 — Restart Home Assistant
@@ -99,9 +103,10 @@ type: custom:vivi-trains-map
 entity: sensor.vivi_carnikava_next_departure  # optional, centers on this station
 height: 480                                   # optional
 zoom: 9                                       # optional
+theme: auto                                   # optional: auto, light, or dark
 ```
 
-Leave `entity` out to open the map on Latvia. The map uses the integration's live connection, so the browser does not contact the train map directly.
+Leave `entity` out to open the map on Latvia. Train positions come from the integration's live connection, so the browser does not contact the train map directly. On Home Assistant 2026.9 and newer the base map is Home Assistant's own map: vector tiles through the Map tiles integration when the browser can draw them, and the same integration's raster tiles when it cannot. Older Home Assistant versions keep OpenStreetMap raster tiles.
 
 ## Local testing
 
