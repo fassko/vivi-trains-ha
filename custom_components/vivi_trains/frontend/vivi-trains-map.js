@@ -181,6 +181,18 @@ class ViviTrainsMap extends HTMLElement {
           box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
         }
         .status[hidden] { display: none; }
+        .leaflet-marker-icon.vivi-train-arrow {
+          background: transparent;
+          border: none;
+          cursor: pointer;
+        }
+        .vivi-train-arrow .vivi-arrow {
+          width: 36px;
+          height: 36px;
+          transform-origin: center center;
+          line-height: 0;
+        }
+        .vivi-train-arrow svg { display: block; }
       </style>
       <ha-card class="vivi-map">
         <div class="map"></div>
@@ -264,7 +276,7 @@ class ViviTrainsMap extends HTMLElement {
       pitchWithRotate: false,
       touchPitch: false,
       localIdeographFontFamily: "sans-serif",
-      attributionControl: true,
+      attributionControl: false,
       transformRequest: (url) => _withMapTilesToken(url),
     });
     this._map = map;
@@ -279,6 +291,8 @@ class ViviTrainsMap extends HTMLElement {
     if (map.keyboard) map.keyboard.disableRotation();
     map.addControl(new maplibre.NavigationControl({ showCompass: false }), "top-left");
     map.addControl(new HomeControl(this), "top-left");
+    map.addControl(new maplibre.AttributionControl({ compact: true }), "bottom-right");
+    _collapseAttribution(map);
     map.on("click", (event) => this._onVectorClick(event));
     map.on("style.load", () => {
       this._installVectorLayers();
@@ -332,7 +346,8 @@ class ViviTrainsMap extends HTMLElement {
 
   _installVectorLayers() {
     const map = this._map;
-    if (!map || map.getSource("vivi-trains")) return;
+    if (!map) return;
+    if (map.getSource("vivi-trains")) return;
     const empty = _featureCollection([]);
     map.addSource("vivi-routes", { type: "geojson", data: empty });
     map.addSource("vivi-trains", { type: "geojson", data: empty });
@@ -349,14 +364,18 @@ class ViviTrainsMap extends HTMLElement {
     });
     map.addLayer({
       id: "vivi-trains",
-      type: "circle",
+      type: "symbol",
       source: "vivi-trains",
+      layout: {
+        "icon-image": ["get", "icon"],
+        "icon-size": 1,
+        "icon-rotate": ["case", ["has", "bearing"], ["get", "bearing"], 0],
+        "icon-rotation-alignment": "map",
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+      },
       paint: {
-        "circle-radius": 7,
-        "circle-color": ["get", "color"],
-        "circle-stroke-color": "#1c1c1e",
-        "circle-stroke-width": 1,
-        "circle-opacity": 0.95,
+        "icon-opacity": 1,
       },
     });
     map.addLayer({
@@ -436,7 +455,7 @@ class ViviTrainsMap extends HTMLElement {
   _openTrainPopup(coordinates, train) {
     if (!this._map || !this._maplibre || !coordinates) return;
     if (!this._trainPopup) {
-      this._trainPopup = new this._maplibre.Popup({ maxWidth: "240px", offset: 12 });
+      this._trainPopup = new this._maplibre.Popup({ maxWidth: "240px", offset: 18 });
     }
     this._trainPopup.setLngLat(coordinates).setHTML(this._popup(train)).addTo(this._map);
   }
@@ -549,13 +568,25 @@ class ViviTrainsMap extends HTMLElement {
       if (Array.isArray(train.polyline) && train.polyline.length > 1) {
         leaflet.polyline(train.polyline, { color, weight: 3, opacity: 0.45 }).addTo(this._layer);
       }
-      const marker = leaflet.circleMarker([train.lat, train.lon], {
-        radius: 7,
-        color: "#1c1c1e",
-        weight: 1,
-        fillColor: color,
-        fillOpacity: 0.95,
-      }).bindPopup(this._popup(train));
+      const bearing = _travelBearing(train.lat, train.lon, train.polyline);
+      const marker = Number.isFinite(bearing)
+        ? leaflet.marker([train.lat, train.lon], {
+            icon: leaflet.divIcon({
+              className: "vivi-train-arrow",
+              html: _arrowHtml(color, bearing),
+              iconSize: [36, 36],
+              iconAnchor: [18, 18],
+              popupAnchor: [0, -18],
+            }),
+          })
+        : leaflet.circleMarker([train.lat, train.lon], {
+            radius: 7,
+            color: "#1c1c1e",
+            weight: 1,
+            fillColor: color,
+            fillOpacity: 0.95,
+          });
+      marker.bindPopup(this._popup(train));
       marker.addTo(this._layer);
     }
     const station = this._stationPosition();
@@ -579,6 +610,8 @@ class ViviTrainsMap extends HTMLElement {
     for (const train of this._trains) {
       if (!Number.isFinite(train.lat) || !Number.isFinite(train.lon)) continue;
       const color = _trainColor(train.color);
+      const bearing = _travelBearing(train.lat, train.lon, train.polyline);
+      const icon = _ensureTrainIcon(map, color, Number.isFinite(bearing));
       const line = _lineCoordinates(train.polyline);
       if (line.length > 1) {
         routes.push({
@@ -595,8 +628,10 @@ class ViviTrainsMap extends HTMLElement {
           delay: Number(train.delay) || 0,
           next_stop: train.next_stop || "",
           color,
+          icon,
           lat: train.lat,
           lon: train.lon,
+          ...(Number.isFinite(bearing) ? { bearing } : {}),
         },
         geometry: { type: "Point", coordinates: [train.lon, train.lat] },
       });
@@ -736,6 +771,25 @@ class HomeControl {
   }
 }
 
+function _collapseAttribution(map) {
+  const collapse = () => {
+    const el = map.getContainer().querySelector(".maplibregl-ctrl-attrib");
+    if (!el) return false;
+    el.classList.add("maplibregl-compact");
+    el.classList.remove("maplibregl-compact-show");
+    el.removeAttribute("open");
+    return !el.classList.contains("maplibregl-attrib-empty");
+  };
+  if (collapse()) return;
+  const finish = () => {
+    if (!collapse()) return;
+    map.off("styledata", finish);
+    map.off("idle", finish);
+  };
+  map.on("styledata", finish);
+  map.on("idle", finish);
+}
+
 function _esc(value) {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -750,6 +804,129 @@ function _trainColor(color) {
 
 function _featureCollection(features) {
   return { type: "FeatureCollection", features };
+}
+
+const ARROW_PATH = "M16 5.2 26.2 27.4 16 21.6 5.8 27.4 Z";
+
+function _arrowHtml(color, bearing) {
+  return (
+    `<div class="vivi-arrow" style="transform:rotate(${bearing}deg)">` +
+    `<svg viewBox="0 0 32 32" width="36" height="36" aria-hidden="true">` +
+    `<path d="${ARROW_PATH}" fill="none" stroke="#1c1c1e" stroke-width="6.5" stroke-linejoin="round"/>` +
+    `<path d="${ARROW_PATH}" fill="${color}" stroke="#ffffff" stroke-width="3.2" stroke-linejoin="round"/>` +
+    `</svg></div>`
+  );
+}
+
+function _ensureTrainIcon(map, color, arrow) {
+  const id = (arrow ? "vivi-arrow-" : "vivi-dot-") + color.slice(1).toLowerCase();
+  if (!map.hasImage(id)) {
+    map.addImage(id, arrow ? _coloredArrowImage(color) : _coloredDotImage(color), { pixelRatio: 2 });
+  }
+  return id;
+}
+
+function _iconCanvas() {
+  const size = 80;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  ctx.translate(size / 2, size / 2);
+  ctx.lineJoin = "round";
+  return { canvas, ctx, size };
+}
+
+function _traceArrow(ctx) {
+  ctx.beginPath();
+  ctx.moveTo(0, -20);
+  ctx.lineTo(16, 18);
+  ctx.lineTo(0, 9);
+  ctx.lineTo(-16, 18);
+  ctx.closePath();
+}
+
+function _coloredArrowImage(color) {
+  const { ctx, size } = _iconCanvas();
+  _traceArrow(ctx);
+  ctx.lineWidth = 16;
+  ctx.strokeStyle = "#1c1c1e";
+  ctx.stroke();
+  _traceArrow(ctx);
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = "#ffffff";
+  ctx.stroke();
+  _traceArrow(ctx);
+  ctx.fillStyle = color;
+  ctx.fill();
+  return ctx.getImageData(0, 0, size, size);
+}
+
+function _coloredDotImage(color) {
+  const { ctx, size } = _iconCanvas();
+  ctx.beginPath();
+  ctx.arc(0, 0, 12, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = "#1c1c1e";
+  ctx.stroke();
+  return ctx.getImageData(0, 0, size, size);
+}
+
+// Bearing of the route segment the train is on, degrees clockwise from north.
+// The live polyline runs from the origin toward the destination.
+function _travelBearing(lat, lon, polyline) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Array.isArray(polyline)) return null;
+  const points = [];
+  for (const pair of polyline) {
+    if (!Array.isArray(pair) || pair.length < 2) continue;
+    const plat = Number(pair[0]);
+    const plon = Number(pair[1]);
+    if (!Number.isFinite(plat) || !Number.isFinite(plon)) continue;
+    points.push([plat, plon]);
+  }
+  if (points.length < 2) return null;
+
+  const lonScale = 111320 * Math.cos((lat * Math.PI) / 180);
+  const latScale = 111320;
+  const px = lon * lonScale;
+  const py = lat * latScale;
+  let bestDist = Infinity;
+  let bestIndex = -1;
+  for (let i = 0; i < points.length - 1; i++) {
+    const ax = points[i][1] * lonScale;
+    const ay = points[i][0] * latScale;
+    const bx = points[i + 1][1] * lonScale;
+    const by = points[i + 1][0] * latScale;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 25) continue;
+    let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+    if (t < 0) t = 0;
+    else if (t > 1) t = 1;
+    const dist2 = (px - (ax + t * dx)) ** 2 + (py - (ay + t * dy)) ** 2;
+    // At a station, where two segments meet, keep the outgoing leg.
+    if (dist2 < bestDist - 1 || (Math.abs(dist2 - bestDist) <= 1 && i > bestIndex)) {
+      bestDist = dist2;
+      bestIndex = i;
+    }
+  }
+  if (bestIndex < 0) return null;
+  const from = points[bestIndex];
+  const to = points[bestIndex + 1];
+  return _bearing(from[0], from[1], to[0], to[1]);
+}
+
+function _bearing(lat1, lon1, lat2, lon2) {
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  if (!y && !x) return null;
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
 function _lineCoordinates(polyline) {
@@ -1018,7 +1195,7 @@ window.customCards.push({
 });
 
 console.info(
-  "%c VIVI-TRAINS-MAP %c v1.3.0 ",
+  "%c VIVI-TRAINS-MAP %c v1.4.0 ",
   "background:#F8DB22;color:#000;font-weight:700;padding:2px 4px;border-radius:3px 0 0 3px",
   "background:#1c1c1e;color:#F8DB22;font-weight:700;padding:2px 4px;border-radius:0 3px 3px 0",
 );
