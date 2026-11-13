@@ -81,7 +81,23 @@ class ViviTrainsMap extends HTMLElement {
           border-radius: var(--ha-card-border-radius, 12px);
           background: var(--ha-card-background, var(--card-background-color, #fff));
         }
-        .map { height: 100%; width: 100%; background: #dbe7dc; }
+        .map {
+          height: 100%;
+          width: 100%;
+          background: #dbe7dc;
+          touch-action: none;
+        }
+        .leaflet-bar a.vivi-home {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 0;
+        }
+        .leaflet-bar a.vivi-home svg {
+          display: block;
+          width: 18px;
+          height: 18px;
+        }
         .status {
           position: absolute;
           z-index: 500;
@@ -114,12 +130,24 @@ class ViviTrainsMap extends HTMLElement {
       if (!this.isConnected || this._map) return;
       const container = this.shadowRoot.querySelector(".map");
       const zoom = this._config.zoom ?? (this._config.entity ? 10 : 7);
-      this._map = leaflet.map(container, { zoomControl: true }).setView(LATVIA_CENTER, zoom);
+      this._map = leaflet.map(container, {
+        zoomControl: true,
+        scrollWheelZoom: true,
+        touchZoom: true,
+        doubleClickZoom: true,
+        boxZoom: true,
+      }).setView(LATVIA_CENTER, zoom);
+      this._keepGesturesOnMap(container);
+      // Home Assistant sends Referrer-Policy: no-referrer. OSM blocks those
+      // tile requests, so each tile image has to name its own referrer policy.
       leaflet.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 18,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        referrerPolicy: "strict-origin-when-cross-origin",
       }).addTo(this._map);
       this._layer = leaflet.layerGroup().addTo(this._map);
+      this._addHomeControl(leaflet);
       this._maybeCenter();
       requestAnimationFrame(() => this._map && this._map.invalidateSize());
       await this._subscribe();
@@ -198,23 +226,27 @@ class ViviTrainsMap extends HTMLElement {
       if (Array.isArray(train.polyline) && train.polyline.length > 1) {
         leaflet.polyline(train.polyline, { color, weight: 3, opacity: 0.45 }).addTo(this._layer);
       }
-      leaflet.circleMarker([train.lat, train.lon], {
+      const marker = leaflet.circleMarker([train.lat, train.lon], {
         radius: 7,
         color: "#1c1c1e",
         weight: 1,
         fillColor: color,
         fillOpacity: 0.95,
-      }).bindPopup(this._popup(train)).addTo(this._layer);
+      }).bindPopup(this._popup(train));
+      marker.on("click", () => this._zoomTo(marker.getLatLng()));
+      marker.addTo(this._layer);
     }
     const station = this._stationPosition();
     if (station) {
-      leaflet.circleMarker(station, {
+      const stationMarker = leaflet.circleMarker(station, {
         radius: 5,
         color: "#1c1c1e",
         weight: 2,
         fillColor: "#ffffff",
         fillOpacity: 1,
-      }).bindTooltip(this._stationName() || "Station").addTo(this._layer);
+      }).bindTooltip(this._stationName() || "Station");
+      stationMarker.on("click", () => this._zoomTo(stationMarker.getLatLng()));
+      stationMarker.addTo(this._layer);
     }
   }
 
@@ -225,18 +257,70 @@ class ViviTrainsMap extends HTMLElement {
     return `<strong>${_esc(train.train || "Train")}</strong>${name}<div>${_esc(delay)}</div>${next}`;
   }
 
+  _keepGesturesOnMap(container) {
+    // Lovelace scrolls the dashboard on wheel and touch. Stop those events
+    // after Leaflet has used them, so pinch, drag, and scroll zoom the map.
+    const stop = (event) => event.stopPropagation();
+    container.addEventListener("wheel", stop);
+    container.addEventListener("touchstart", stop);
+    container.addEventListener("touchmove", stop);
+  }
+
+  _zoomTo(latlng) {
+    if (!this._map || !latlng) return;
+    const zoom = Math.min(15, Math.max(this._map.getZoom() + 1, 13));
+    this._map.flyTo(latlng, zoom, { duration: 0.5 });
+  }
+
+  _homeView() {
+    const station = this._stationPosition();
+    return {
+      center: station || LATVIA_CENTER,
+      zoom: this._config.zoom ?? (this._config.entity ? 10 : 7),
+    };
+  }
+
+  _zoomHome() {
+    if (!this._map) return;
+    const home = this._homeView();
+    this._map.flyTo(home.center, home.zoom, { duration: 0.5 });
+  }
+
+  _addHomeControl(leaflet) {
+    const card = this;
+    const HomeControl = leaflet.Control.extend({
+      options: { position: "topleft" },
+      onAdd() {
+        const container = leaflet.DomUtil.create("div", "leaflet-bar leaflet-control");
+        const button = leaflet.DomUtil.create("a", "vivi-home", container);
+        button.href = "#";
+        button.title = "Current location";
+        button.setAttribute("role", "button");
+        button.setAttribute("aria-label", "Current location");
+        button.innerHTML =
+          '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+          '<circle cx="12" cy="12" r="3" fill="currentColor"></circle>' +
+          '<circle cx="12" cy="12" r="7.25" fill="none" stroke="currentColor" stroke-width="2"></circle>' +
+          '<path d="M12 1.75v3.1M12 19.15V22.25M1.75 12h3.1M19.15 12H22.25" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>' +
+          "</svg>";
+        leaflet.DomEvent.disableClickPropagation(container);
+        leaflet.DomEvent.on(button, "click", (event) => {
+          leaflet.DomEvent.preventDefault(event);
+          leaflet.DomEvent.stopPropagation(event);
+          card._zoomHome();
+        });
+        return container;
+      },
+    });
+    new HomeControl().addTo(this._map);
+  }
+
   _maybeCenter() {
     if (!this._map || this._centered) return;
-    const station = this._stationPosition();
-    if (station) {
-      this._map.setView(station, this._config.zoom ?? 10);
-      this._centered = true;
-      return;
-    }
-    if (!this._config.entity) {
-      this._map.setView(LATVIA_CENTER, this._config.zoom ?? 7);
-      this._centered = true;
-    }
+    if (this._config.entity && !this._stationPosition()) return;
+    const home = this._homeView();
+    this._map.setView(home.center, home.zoom);
+    this._centered = true;
   }
 
   _stationState() {
@@ -292,7 +376,7 @@ window.customCards.push({
 });
 
 console.info(
-  "%c VIVI-TRAINS-MAP %c v1.1.0 ",
+  "%c VIVI-TRAINS-MAP %c v1.2.0 ",
   "background:#F8DB22;color:#000;font-weight:700;padding:2px 4px;border-radius:3px 0 0 3px",
   "background:#1c1c1e;color:#F8DB22;font-weight:700;padding:2px 4px;border-radius:0 3px 3px 0",
 );

@@ -92,13 +92,15 @@ class ViviTrainsCard extends HTMLElement {
           <span class="title">${this._escHtml(title)}</span>
           <span class="updated">Updated ${updatedAt}</span>
         </div>
-        <div class="table-header">
-          <span class="col-time">Departure</span>
-          <span class="col-min">Min</span>
-          <span class="col-dest">Destination</span>
-          <span class="col-days">Days</span>
+        <div class="table">
+          <div class="table-header">
+            <span class="col-time">Dep</span>
+            <span class="col-min">Min</span>
+            <span class="col-dest">Destination</span>
+            <span class="col-days">Days</span>
+          </div>
+          <div class="rows">${rows}</div>
         </div>
-        <div class="rows">${rows}</div>
         ${this._renderFooter(filteredDepartures.length, pageSize)}
       </ha-card>`;
 
@@ -176,15 +178,22 @@ class ViviTrainsCard extends HTMLElement {
         --vivi-hover-bg: var(--secondary-background-color, rgba(0, 0, 0, 0.04));
         --vivi-next-bg: rgba(248, 219, 34, 0.08);
         --vivi-next-border: rgba(248, 219, 34, 0.35);
+        display: block;
+        min-width: 0;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       }
 
       ha-card.vivi-card {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
         background: var(--vivi-card-bg);
         border-radius: var(--ha-card-border-radius, 12px);
         overflow: hidden;
         color: var(--vivi-text);
         border: 1px solid var(--vivi-border);
+        min-width: 0;
+        container: vivi / inline-size;
       }
 
       .header {
@@ -202,18 +211,34 @@ class ViviTrainsCard extends HTMLElement {
         font-weight: 600;
         color: var(--vivi-yellow);
         flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .updated {
+        flex-shrink: 0;
         font-size: 10px;
         color: var(--vivi-muted);
+        white-space: nowrap;
+      }
+
+      .table {
+        display: grid;
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
+      }
+
+      .table-header,
+      .rows,
+      .row {
+        display: grid;
+        grid-column: 1 / -1;
+        grid-template-columns: subgrid;
       }
 
       .table-header {
-        display: grid;
-        grid-template-columns: 170px 80px minmax(160px, 1fr) 70px;
-        column-gap: 18px;
-        padding: 8px 16px 4px;
+        padding: 8px 0 4px;
         font-size: 10px;
         font-weight: 600;
         text-transform: uppercase;
@@ -224,19 +249,14 @@ class ViviTrainsCard extends HTMLElement {
 
       .table-header span {
         min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
         white-space: nowrap;
       }
 
       .rows { padding: 4px 0 8px; }
 
       .row {
-        display: grid;
-        grid-template-columns: 170px 80px minmax(160px, 1fr) 70px;
-        column-gap: 18px;
         align-items: center;
-        padding: 8px 16px;
+        padding: 8px 0;
         border-bottom: 1px solid transparent;
         transition: background 0.15s;
       }
@@ -245,14 +265,20 @@ class ViviTrainsCard extends HTMLElement {
 
       .row-next {
         background: var(--vivi-next-bg);
-        border-left: 3px solid var(--vivi-yellow);
-        padding-left: 13px;
+        box-shadow: inset 3px 0 0 var(--vivi-yellow);
+      }
+
+      .col-time,
+      .col-min,
+      .col-dest {
+        padding-right: clamp(8px, 3cqi, 18px);
       }
 
       .col-time {
         display: flex;
         align-items: center;
         gap: 6px;
+        padding-left: 16px;
         font-size: 15px;
         font-weight: 600;
         font-variant-numeric: tabular-nums;
@@ -261,7 +287,6 @@ class ViviTrainsCard extends HTMLElement {
       .time-stack {
         display: flex;
         flex-direction: column;
-        min-width: 0;
       }
 
       .day-label {
@@ -306,6 +331,7 @@ class ViviTrainsCard extends HTMLElement {
       }
 
       .col-dest {
+        min-width: 0;
         font-size: 13px;
         white-space: nowrap;
         overflow: hidden;
@@ -313,26 +339,65 @@ class ViviTrainsCard extends HTMLElement {
       }
 
       .col-days {
+        padding-right: 16px;
         font-size: 11px;
         color: var(--vivi-muted);
         text-align: right;
         white-space: nowrap;
       }
 
-      @media (max-width: 520px) {
-        .table-header,
-        .row {
-          grid-template-columns: minmax(108px, 1fr) 60px minmax(0, 1.4fr);
-          column-gap: 10px;
+      @container vivi (max-width: 520px) {
+        .table {
+          grid-template-columns: auto auto minmax(0, 1fr);
         }
 
         .col-days {
           display: none;
         }
+
+        .col-dest {
+          padding-right: 16px;
+        }
+      }
+
+      @container vivi (max-width: 340px) {
+        .table-header {
+          display: none;
+        }
+
+        .row {
+          grid-template-columns: minmax(0, 1fr) auto;
+          grid-template-areas:
+            "time min"
+            "dest dest";
+          row-gap: 2px;
+          align-items: start;
+          padding: 8px 16px;
+        }
+
+        .col-time,
+        .col-min,
+        .col-dest {
+          padding: 0;
+        }
+
+        .col-time { grid-area: time; }
+        .col-min { grid-area: min; justify-self: end; padding-left: 8px; }
+        .col-dest {
+          grid-area: dest;
+          white-space: normal;
+        }
+
+        .footer {
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          row-gap: 8px;
+        }
       }
 
       .no-trains {
-        padding: 20px 16px;
+        grid-column: 1 / -1;
+        padding: 20px 0;
         color: var(--vivi-muted);
         text-align: center;
         font-size: 13px;
@@ -531,7 +596,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c VIVI-TRAINS-CARD %c v1.1.0 ',
+  '%c VIVI-TRAINS-CARD %c v1.2.0 ',
   'background:#F8DB22;color:#000;font-weight:700;padding:2px 4px;border-radius:3px 0 0 3px',
   'background:#1c1c1e;color:#F8DB22;font-weight:700;padding:2px 4px;border-radius:0 3px 3px 0',
 );
